@@ -1,0 +1,148 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prompt Charades</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        #timer { font-size: 24px; margin-bottom: 20px; }
+        #finalPopup {
+            display: none;
+            position: fixed;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -30%);
+            background-color: #fff;
+            border: 2px solid #333;
+            padding: 20px;
+            z-index: 1000;
+        }
+        #scoreBoard { margin-bottom: 20px; }
+        button { margin: 5px; padding: 10px 20px; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div id="timer">Time Left: 90s</div>
+    <div id="scoreBoard">Correct: 0 | Incorrect: 0 | Skipped: 0</div>
+    <h2 id="wordDisplay">Describe this word: <span id="currentWord">Loading...</span></h2>
+    <form id="descriptionForm">
+        <textarea id="description" rows="4" cols="50" placeholder="Describe the word..."></textarea><br>
+        <button type="submit">Submit</button>
+        <button type="button" onclick="skipWord()">Skip</button>
+        <button type="button" onclick="startVoiceInput()">🎤 Speak</button>
+    </form>
+    <div id="resultDisplay"></div>
+
+    <div id="finalPopup">
+        <h2>Game Over!</h2>
+        <p id="finalResults"></p>
+        <button onclick="location.reload()">Play Again</button>
+    </div>
+
+    <script>
+        let timeLeft = 90;
+        let correct = 0, incorrect = 0, skipped = 0;
+        let currentWord = "";
+
+        const timerDisplay = document.getElementById("timer");
+        const scoreBoard = document.getElementById("scoreBoard");
+        const wordDisplay = document.getElementById("currentWord");
+        const resultDisplay = document.getElementById("resultDisplay");
+        const finalPopup = document.getElementById("finalPopup");
+        const finalResults = document.getElementById("finalResults");
+
+        function updateTimer() {
+            if (timeLeft > 0) {
+                timerDisplay.textContent = "Time Left: " + timeLeft + "s";
+                timeLeft--;
+            } else {
+                clearInterval(timerInterval);
+                timerDisplay.textContent = "Time's up!";
+                showFinalResults();
+            }
+        }
+
+        const timerInterval = setInterval(updateTimer, 1000);
+
+        function updateScoreBoard() {
+            scoreBoard.textContent = `Correct: ${correct} | Incorrect: ${incorrect} | Skipped: ${skipped}`;
+        }
+
+        function fetchNextWord() {
+            fetch("/next_word")
+                .then(response => response.json())
+                .then(data => {
+                    if (data.word) {
+                        currentWord = data.word;
+                        wordDisplay.textContent = currentWord;
+                        document.getElementById("description").value = "";
+                        resultDisplay.innerHTML = "";
+                    } else {
+                        showFinalResults();
+                    }
+                });
+        }
+
+        function showFinalResults() {
+            finalResults.innerHTML = `
+                Correct: ${correct}<br>
+                Incorrect: ${incorrect}<br>
+                Skipped: ${skipped}<br>
+                Total Score: ${correct * 100}
+            `;
+            finalPopup.style.display = "block";
+        }
+
+        document.getElementById("descriptionForm").addEventListener("submit", function(e) {
+            e.preventDefault();
+            const description = document.getElementById("description").value;
+            fetch("/submit_description", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description: description })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.correct) {
+                    correct++;
+                } else {
+                    incorrect++;
+                }
+                updateScoreBoard();
+                resultDisplay.innerHTML = `
+                    <p>AI Guess: ${data.ai_guess}</p>
+                    <p>${data.correct ? "✅ Correct!" : "❌ Incorrect!"}</p>
+                `;
+                setTimeout(fetchNextWord, 1500);
+            });
+        });
+
+        function skipWord() {
+            skipped++;
+            updateScoreBoard();
+            fetchNextWord();
+        }
+
+        function startVoiceInput() {
+            if (!("webkitSpeechRecognition" in window)) {
+                alert("Speech recognition not supported in this browser.");
+                return;
+            }
+            const recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = "en-US";
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById("description").value = transcript;
+                document.getElementById("descriptionForm").dispatchEvent(new Event("submit"));
+            };
+            recognition.start();
+        }
+
+        // Start the game
+        fetchNextWord();
+    </script>
+</body>
+</html>
